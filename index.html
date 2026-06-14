@@ -60,7 +60,7 @@
         button { color: white; border: none; padding: 10px 15px; font-size: 15px; font-weight: bold; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; }
         .start-btn { background-color: #3182ce; }
         .stop-btn { background-color: #e53e3e; }
-        .download-btn { background-color: #38a169; margin-top: 10px; }
+        .download-btn { background-color: #3182ce; margin-top: 10px; }
         
         .table-container { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-top: 10px; }
         table { width: 100%; border-collapse: collapse; }
@@ -71,7 +71,7 @@
 <body>
 
     <div class="container">
-        <h1>Verkaufsscanner (Intelligente Zuordnung)</h1>
+        <h1>Verkaufsscanner</h1>
         
         <div class="setup-box">
             <button class="start-btn" id="initBtn" onclick="berechtigungAnfordern()">1. Kameras suchen & erlauben</button>
@@ -101,7 +101,7 @@
             </table>
         </div>
 
-        <button class="download-btn" onclick="exportToCSV()">Liste als CSV herunterladen</button>
+        <button class="download-btn" onclick="exportToTXT()">Liste als Textdokument herunterladen</button>
     </div>
 
     <script>
@@ -156,47 +156,30 @@
             }
         }
 
-        // HIER STECKT DIE NEUE, INTELLIGENTE UNTERSTRICH-LOGIK
         function onScanSuccess(decodedText, decodedResult) {
             let intNum = "Unbekannt";
             let serNum = "Unbekannt";
 
-            // Alle unsichtbaren Steuerzeichen entfernen und Text säubern
             let cleanText = decodedText.replace(/[\x00-\x1F\x7F-\x9F]/g, ' ').trim();
-
-            // Text an Leerzeichen, Semikolon oder Komma aufsplitten
             let parts = cleanText.split(/[\s,;]+/);
             parts = parts.filter(function(p) { return p.trim().length > 0; });
 
             if (parts.length >= 2) {
-                // Wir haben mindestens zwei Textblöcke. Jetzt prüfen wir, wo der Unterstrich steckt!
                 if (parts[0].includes('_')) {
-                    // Erster Teil hat den Unterstrich -> Interne Nummer
                     intNum = parts[0].trim();
                     serNum = parts[1].trim();
                 } else if (parts[1].includes('_')) {
-                    // Zweiter Teil hat den Unterstrich -> Interne Nummer
                     intNum = parts[1].trim();
                     serNum = parts[0].trim();
                 } else {
-                    // Keiner hat einen Unterstrich? Dann Standardreihenfolge nutzen
                     intNum = parts[0].trim();
                     serNum = parts[1].trim();
                 }
             } else if (parts.length === 1) {
-                // Falls alles in einem Block klebt, versuchen wir am Unterstrich zu trennen
-                let singleText = parts[0];
-                if (singleText.includes('_')) {
-                    // Wir suchen den Unterstrich und trennen dort, wo das nächste Leerzeichen/Wechsel wäre
-                    intNum = singleText; // Fallback
-                } else {
-                    intNum = singleText;
-                }
+                intNum = parts[0].trim();
             }
 
             const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
-            
-            // Wichtig für den Doublettenschutz: Wir prüfen gegen die bereinigte Seriennummer
             const existiertBereits = scannedItems.some(function(item) { return item.serNum === serNum; });
 
             if (!existiertBereits && serNum !== "Unbekannt") {
@@ -230,15 +213,30 @@
 
         function onScanFailure(error) {}
 
-        function exportToCSV() {
+        // HIER WURDE DIE FUNKTION AUF EIN REINES TEXTDOKUMENT (.txt) UMGESTELLT
+        function exportToTXT() {
             if (scannedItems.length === 0) { alert("Die Liste ist leer!"); return; }
-            let csvContent = "\uFEFFZeitpunkt;Interne Nummer;Seriennummer\n";
-            scannedItems.forEach(function(item) { csvContent += item.timestamp + ";" + item.intNum + ";" + item.serNum + "\n"; });
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            
+            // Kopfzeile für das Textdokument bauen
+            let textContent = "GESCANNTE GERÄTE - VERKAUFSLISTE\n";
+            textContent += "Erstellt am: " + new Date().toLocaleDateString('de-DE') + "\n";
+            textContent += "==================================================\n\n";
+            textContent += "Uhrzeit   | Interne Nummer  | Seriennummer\n";
+            textContent += "--------------------------------------------------\n";
+            
+            // Jeden Eintrag sauber untereinander formatieren
+            scannedItems.forEach(function(item) { 
+                textContent += item.timestamp + "  | " + item.intNum + "        | " + item.serNum + "\n"; 
+            });
+            
+            // Als reine Textdatei (.txt) bereitstellen
+            const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = "Verkaufsliste_" + new Date().toISOString().slice(0,10) + ".csv";
-            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            link.download = "Verkaufsliste_" + new Date().toISOString().slice(0,10) + ".txt";
+            document.body.appendChild(link); 
+            link.click(); 
+            document.body.removeChild(link);
         }
     </script>
 </body>
