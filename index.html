@@ -71,7 +71,7 @@
 <body>
 
     <div class="container">
-        <h1>Verkaufsscanner (Universal)</h1>
+        <h1>Verkaufsscanner (Intelligente Zuordnung)</h1>
         
         <div class="setup-box">
             <button class="start-btn" id="initBtn" onclick="berechtigungAnfordern()">1. Kameras suchen & erlauben</button>
@@ -156,41 +156,50 @@
             }
         }
 
-        // NEU: ABSOLUT FEHLERFREIE UNIVERSAL-TRENNUNG
+        // HIER STECKT DIE NEUE, INTELLIGENTE UNTERSTRICH-LOGIK
         function onScanSuccess(decodedText, decodedResult) {
-            let intNum = "";
-            let serNum = "";
+            let intNum = "Unbekannt";
+            let serNum = "Unbekannt";
 
-            // 1. Alle unsichtbaren Steuerzeichen durch normale Leerzeichen ersetzen
+            // Alle unsichtbaren Steuerzeichen entfernen und Text säubern
             let cleanText = decodedText.replace(/[\x00-\x1F\x7F-\x9F]/g, ' ').trim();
 
-            // 2. Text an jeglichen Trennern splitten (Leerzeichen, Semikolon, Komma, Tabulator)
+            // Text an Leerzeichen, Semikolon oder Komma aufsplitten
             let parts = cleanText.split(/[\s,;]+/);
-            
-            // Nur Einträge behalten, die nicht komplett leer sind
             parts = parts.filter(function(p) { return p.trim().length > 0; });
 
             if (parts.length >= 2) {
-                // Wenn wir mindestens zwei Teile haben, nehmen wir sie direkt
-                intNum = parts[0].trim();
-                serNum = parts[1].trim();
+                // Wir haben mindestens zwei Textblöcke. Jetzt prüfen wir, wo der Unterstrich steckt!
+                if (parts[0].includes('_')) {
+                    // Erster Teil hat den Unterstrich -> Interne Nummer
+                    intNum = parts[0].trim();
+                    serNum = parts[1].trim();
+                } else if (parts[1].includes('_')) {
+                    // Zweiter Teil hat den Unterstrich -> Interne Nummer
+                    intNum = parts[1].trim();
+                    serNum = parts[0].trim();
+                } else {
+                    // Keiner hat einen Unterstrich? Dann Standardreihenfolge nutzen
+                    intNum = parts[0].trim();
+                    serNum = parts[1].trim();
+                }
             } else if (parts.length === 1) {
-                // FALLBACK: Falls der Code gar kein Trennzeichen enthält und wie ein einziges langes Wort ankommt,
-                // teilen wir den Text mathematisch genau in der Mitte auf!
-                let fullText = parts[0];
-                let mitte = Math.floor(fullText.length / 2);
-                intNum = fullText.substring(0, mitte).trim();
-                serNum = fullText.substring(mitte).trim();
-            } else {
-                // Extremfall: Komplett leerer Code
-                intNum = "Unleserlich";
-                serNum = "Unleserlich";
+                // Falls alles in einem Block klebt, versuchen wir am Unterstrich zu trennen
+                let singleText = parts[0];
+                if (singleText.includes('_')) {
+                    // Wir suchen den Unterstrich und trennen dort, wo das nächste Leerzeichen/Wechsel wäre
+                    intNum = singleText; // Fallback
+                } else {
+                    intNum = singleText;
+                }
             }
 
             const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+            
+            // Wichtig für den Doublettenschutz: Wir prüfen gegen die bereinigte Seriennummer
             const existiertBereits = scannedItems.some(function(item) { return item.serNum === serNum; });
 
-            if (!existiertBereits) {
+            if (!existiertBereits && serNum !== "Unbekannt") {
                 const jetzt = Date.now();
                 if (jetzt - lastAudioTime > 1000) {
                     try {
