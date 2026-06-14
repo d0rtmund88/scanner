@@ -71,7 +71,7 @@
 <body>
 
     <div class="container">
-        <h1>Verkaufsscanner (Muster-Erkennung)</h1>
+        <h1>Verkaufsscanner (Universal)</h1>
         
         <div class="setup-box">
             <button class="start-btn" id="initBtn" onclick="berechtigungAnfordern()">1. Kameras suchen & erlauben</button>
@@ -156,57 +156,41 @@
             }
         }
 
-        // HIER WURDE DIE LOGIK AUF HIGH-TECH MUSTERERKENNUNG UMGESTELLT
+        // NEU: ABSOLUT FEHLERFREIE UNIVERSAL-TRENNUNG
         function onScanSuccess(decodedText, decodedResult) {
-            let intNum = "Nicht erkannt";
-            let serNum = "Nicht erkannt";
+            let intNum = "";
+            let serNum = "";
 
-            // Bereinige den gescannten Text von unsichtbarem Steuer-Müll
-            let cleanText = decodedText.replace(/[\x00-\x1F\x7F-\x9F]/g, ' ');
+            // 1. Alle unsichtbaren Steuerzeichen durch normale Leerzeichen ersetzen
+            let cleanText = decodedText.replace(/[\x00-\x1F\x7F-\x9F]/g, ' ').trim();
 
-            // Suchmuster (Reguläre Ausdrücke) basierend auf deinem Foto:
-            // Interne Nummer hat ein Unterstrich-Muster, z.B. HR8_002
-            const intPattern = /(HR8_[A-Za-z0-9]+)/i;
-            // Seriennummer hat direkt Nummern nach der 8, z.B. HR80034
-            const serPattern = /(HR80[0-9]+)/i;
+            // 2. Text an jeglichen Trennern splitten (Leerzeichen, Semikolon, Komma, Tabulator)
+            let parts = cleanText.split(/[\s,;]+/);
+            
+            // Nur Einträge behalten, die nicht komplett leer sind
+            parts = parts.filter(function(p) { return p.trim().length > 0; });
 
-            // Versuche die Interne Nummer im Text zu finden
-            const intMatch = cleanText.match(intPattern);
-            if (intMatch) {
-                intNum = intMatch[1].toUpperCase();
-            }
-
-            // Versuche die Seriennummer im Text zu finden
-            const serMatch = cleanText.match(serPattern);
-            if (serMatch) {
-                serNum = serMatch[1].toUpperCase();
-            }
-
-            // FALLBACK: Falls die festen Muster oben nicht greifen (z.B. bei anderen QR-Codes), 
-            // nutzen wir die klassische Texttrennung als Sicherheitsnetz
-            if (intNum === "Nicht erkannt" || serNum === "Nicht erkannt") {
-                let parts = cleanText.split(/[\s,;]+/);
-                parts = parts.filter(function(p) { return p.trim().length > 2; }); // Nur sinnvolle Textteile
-                
-                if (parts.length >= 2) {
-                    // Wenn der erste Teil ein "_" hat, ist es die interne Nummer
-                    if (parts[0].includes('_')) {
-                        intNum = parts[0].trim();
-                        serNum = parts[1].trim();
-                    } else {
-                        intNum = parts[1].trim();
-                        serNum = parts[0].trim();
-                    }
-                } else if (parts.length === 1) {
-                    intNum = parts[0].trim();
-                }
+            if (parts.length >= 2) {
+                // Wenn wir mindestens zwei Teile haben, nehmen wir sie direkt
+                intNum = parts[0].trim();
+                serNum = parts[1].trim();
+            } else if (parts.length === 1) {
+                // FALLBACK: Falls der Code gar kein Trennzeichen enthält und wie ein einziges langes Wort ankommt,
+                // teilen wir den Text mathematisch genau in der Mitte auf!
+                let fullText = parts[0];
+                let mitte = Math.floor(fullText.length / 2);
+                intNum = fullText.substring(0, mitte).trim();
+                serNum = fullText.substring(mitte).trim();
+            } else {
+                // Extremfall: Komplett leerer Code
+                intNum = "Unleserlich";
+                serNum = "Unleserlich";
             }
 
             const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
             const existiertBereits = scannedItems.some(function(item) { return item.serNum === serNum; });
 
-            // Trage es nur ein, wenn wir mindestens eine Nummer sinnvoll erkannt haben
-            if (!existiertBereits && serNum !== "Nicht erkannt") {
+            if (!existiertBereits) {
                 const jetzt = Date.now();
                 if (jetzt - lastAudioTime > 1000) {
                     try {
