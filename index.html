@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR-Code Verkaufsscanner</title>
+    <!-- Einbindung der Scan-Bibliothek -->
+    <script src="https://unpkg.com/@html5-qrcode/html5-qrcode"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h1 { 
+            text-align: center; 
+            color: #1a365d; 
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        #reader {
+            width: 100%;
+            background: white;
+            padding: 10px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            overflow: hidden;
+            border: none !important;
+        }
+        #reader __dashboard {
+            padding: 10px !important;
+        }
+        .button-container {
+            text-align: center;
+            margin: 25px 0;
+        }
+        button {
+            background-color: #2b6cb0;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: background 0.2s;
+        }
+        button:hover { background-color: #2c5282; }
+        .download-btn { background-color: #2f855a; }
+        .download-btn:hover { background-color: #22543d; }
+        
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            overflow: hidden;
+            margin-top: 20px;
+        }
+        h2 {
+            font-size: 18px;
+            color: #2d3748;
+            padding: 15px 20px;
+            margin: 0;
+            background: #edf2f7;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            font-size: 14px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        th { 
+            background-color: #f7fafc; 
+            color: #4a5568;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:nth-child(even) { background-color: #fcfdfd; }
+        .empty-message {
+            padding: 20px;
+            text-align: center;
+            color: #718096;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>QR-Code Verkaufsscanner</h1>
+        
+        <!-- Hier wird das Kamerabild angezeigt -->
+        <div id="reader"></div>
+
+        <div class="button-container">
+            <button class="download-btn" onclick="exportToCSV()">Liste als CSV (Excel) herunterladen</button>
+        </div>
+
+        <!-- Hier entsteht deine Liste -->
+        <div class="table-container">
+            <h2>Gescannte Geräte</h2>
+            <table id="resultTable">
+                <thead>
+                    <tr>
+                        <th>Zeitpunkt</th>
+                        <th>Interne Nummer</th>
+                        <th>Seriennummer</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr id="noDataRow">
+                        <td colspan="3" class="empty-message">Noch keine Geräte gescannt</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const scannedItems = [];
+
+        function onScanSuccess(decodedText, decodedResult) {
+            // Audio-Feedback (Piepton) erzeugen
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                osc.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(0.1);
+            } catch(e) { console.log("Audio konnte nicht abgespielt werden"); }
+
+            // Erkennung von Trennzeichen: Semikolon, Komma oder Zeilenumbruch
+            let parts = [];
+            if (decodedText.includes(';')) {
+                parts = decodedText.split(';');
+            } else if (decodedText.includes(',')) {
+                parts = decodedText.split(',');
+            } else {
+                parts = decodedText.split(/\r?\n/); // Trennung bei Zeilenumbruch
+            }
+
+            // Daten säubern (Leerzeichen entfernen)
+            const intNum = parts[0] ? parts[0].trim() : "Unbekannt";
+            const serNum = parts[1] ? parts[1].trim() : "Unbekannt";
+            const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+
+            // Duplikate vermeiden anhand der Seriennummer
+            const bereitsGescannnt = scannedItems.some(item => item.serNum === serNum);
+            
+            if (!bereitsGescannnt) {
+                // Platzhalter-Zeile entfernen, falls vorhanden
+                const noDataRow = document.getElementById("noDataRow");
+                if (noDataRow) noDataRow.remove();
+
+                // Daten im Speicher sichern
+                scannedItems.push({ timestamp, intNum, serNum });
+
+                // Tabelle aktualisieren
+                const tableBody = document.querySelector("#resultTable tbody");
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td>\${timestamp}</td>
+                    <td><strong>\${intNum}</strong></td>
+                    <td><strong>\${serNum}</strong></td>
+                `;
+                tableBody.appendChild(row);
+            } else {
+                alert("Dieses Gerät (Seriennummer: " + serNum + ") wurde in dieser Liste bereits gescannt!");
+            }
+        }
+
+        // Scanner initialisieren und starten
+        const html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", { fps: 10, qrbox: 250, rememberLastUsedCamera: true }
+        );
+        html5QrcodeScanner.render(onScanSuccess);
+
+        // Funktion zum Exportieren der Liste für Excel
+        function exportToCSV() {
+            if (scannedItems.length === 0) {
+                alert("Die Liste ist noch leer!");
+                return;
+            }
+            
+            // BOM für Excel hinzufügen, damit Umlaute/Sonderzeichen korrekt dargestellt werden
+            let csvContent = "\uFEFFZeitpunkt;Interne Nummer;Seriennummer\n";
+            
+            scannedItems.forEach(item => {
+                csvContent += `\${item.timestamp};\${item.intNum};\${item.serNum}\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            
+            const datum = new Date().toISOString().slice(0,10);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `Verkaufsliste_\${datum}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
