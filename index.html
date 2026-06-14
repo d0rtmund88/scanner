@@ -156,15 +156,20 @@
             }
         }
 
+        // HIER WURDE DER ENTSCHEIDENDE FIX EINGEBAUT
         function onScanSuccess(decodedText, decodedResult) {
-            let intNum = "Unbekannt";
-            let serNum = "Unbekannt";
+            let intNum = "-";
+            let serNum = "-";
 
+            // Text von unsichtbaren Zeichen reinigen
             let cleanText = decodedText.replace(/[\x00-\x1F\x7F-\x9F]/g, ' ').trim();
+
+            // Versuche den Text an sichtbaren Trennern (Leerzeichen, Semikolon, Komma) aufzuteilen
             let parts = cleanText.split(/[\s,;]+/);
             parts = parts.filter(function(p) { return p.trim().length > 0; });
 
             if (parts.length >= 2) {
+                // Intelligente Zuordnung anhand des Unterstrichs
                 if (parts[0].includes('_')) {
                     intNum = parts[0].trim();
                     serNum = parts[1].trim();
@@ -176,13 +181,24 @@
                     serNum = parts[1].trim();
                 }
             } else if (parts.length === 1) {
+                // FALLBACK FIX: Wenn keine Trennung gelingt, packen wir den GANZEN Text in die interne Nummer.
+                // Dadurch bleibt jeder Scan einzigartig und blockiert nicht den nächsten!
                 intNum = parts[0].trim();
+                serNum = "-"; 
             }
 
             const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
-            const existiertBereits = scannedItems.some(function(item) { return item.serNum === serNum; });
+            
+            // Doublettenschutz prüft jetzt entweder die Seriennummer ODER die interne Nummer, falls keine Seriennummer da ist
+            const existiertBereits = scannedItems.some(function(item) { 
+                if (serNum !== "-") {
+                    return item.serNum === serNum;
+                } else {
+                    return item.intNum === intNum;
+                }
+            });
 
-            if (!existiertBereits && serNum !== "Unbekannt") {
+            if (!existiertBereits) {
                 const jetzt = Date.now();
                 if (jetzt - lastAudioTime > 1000) {
                     try {
@@ -213,23 +229,19 @@
 
         function onScanFailure(error) {}
 
-        // HIER WURDE DIE FUNKTION AUF EIN REINES TEXTDOKUMENT (.txt) UMGESTELLT
         function exportToTXT() {
             if (scannedItems.length === 0) { alert("Die Liste ist leer!"); return; }
             
-            // Kopfzeile für das Textdokument bauen
             let textContent = "GESCANNTE GERÄTE - VERKAUFSLISTE\n";
             textContent += "Erstellt am: " + new Date().toLocaleDateString('de-DE') + "\n";
             textContent += "==================================================\n\n";
             textContent += "Uhrzeit   | Interne Nummer  | Seriennummer\n";
             textContent += "--------------------------------------------------\n";
             
-            // Jeden Eintrag sauber untereinander formatieren
             scannedItems.forEach(function(item) { 
                 textContent += item.timestamp + "  | " + item.intNum + "        | " + item.serNum + "\n"; 
             });
             
-            // Als reine Textdatei (.txt) bereitstellen
             const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
