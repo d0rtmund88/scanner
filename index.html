@@ -53,24 +53,21 @@
     <script>
         const scannedItems = [];
         let html5QrCode;
-        let currentCameraId;
 
         // Schritt 1: Kamera-Rechte anfordern und Liste laden
         function berechtigungAnfordern() {
             Html5Qrcode.getCameras().then(devices => {
                 if (devices && devices.length > 0) {
                     const select = document.getElementById('cameraSelect');
-                    select.innerHTML = ''; // Leeren
+                    select.innerHTML = ''; 
                     
                     devices.forEach((device, index) => {
                         const option = document.createElement('option');
                         option.value = device.id;
-                        // Text lesbar machen (Kamera 1, Kamera 2...)
-                        option.text = device.label || `Kamera ${index + 1}`;
+                        option.text = device.label || "Kamera " + (index + 1);
                         select.appendChild(option);
                     });
 
-                    // Wenn es mehrere Kameras gibt (z.B. Weitwinkel/Tele), ist die letzte oft die Haupt-Rückkamera
                     if(devices.length > 1) {
                         select.selectedIndex = devices.length - 1;
                     }
@@ -78,13 +75,12 @@
                     document.getElementById('cameraSelectContainer').style.display = 'block';
                     document.getElementById('initBtn').style.display = 'none';
                     
-                    // Scanner-Objekt vorbereiten
                     html5QrCode = new Html5Qrcode("reader");
                 } else {
                     alert("Keine Kameras am Gerät gefunden.");
                 }
             }).catch(err => {
-                alert("Fehler beim Zugriff auf Kameras. Bitte erlaube den Kamerazugriff im Browser!\nDetails: " + err);
+                alert("Fehler beim Zugriff auf Kameras: " + err);
             });
         }
 
@@ -119,6 +115,7 @@
             }
         }
 
+        // HIER WURDE DIE LOGIK GEÄNDERT: Platzhalter wurden durch sichere Text-Befehle ersetzt
         function onScanSuccess(decodedText, decodedResult) {
             // Kurzer Piepton bei Erfolg
             try {
@@ -133,28 +130,50 @@
             const serNum = parts[1] ? parts[1].trim() : "Unbekannt";
             const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
 
-            if (!scannedItems.some(item => item.serNum === serNum)) {
+            // Prüfen ob Seriennummer schon in der Liste ist
+            const existiertBereits = scannedItems.some(function(item) { return item.serNum === serNum; });
+
+            if (!existiertBereits) {
                 const noDataRow = document.getElementById("noDataRow");
                 if (noDataRow) noDataRow.remove();
 
-                scannedItems.push({ timestamp, intNum, serNum });
-                const row = `<tr><td>\${timestamp}</td><td><b>\${intNum}</b></td><td><b>\${serNum}</b></td></tr>`;
-                document.getElementById("tableBody").innerHTML += row;
+                // Im Speicher sichern
+                scannedItems.push({ timestamp: timestamp, intNum: intNum, serNum: serNum });
+
+                // Neue Tabellenzeile komplett fehlerfrei erstellen
+                const tableBody = document.getElementById("tableBody");
+                const newRow = document.createElement("tr");
+
+                const cell1 = document.createElement("td");
+                cell1.textContent = timestamp;
+                
+                const cell2 = document.createElement("td");
+                cell2.innerHTML = "<b>" + intNum + "</b>";
+                
+                const cell3 = document.createElement("td");
+                cell3.innerHTML = "<b>" + serNum + "</b>";
+
+                newRow.appendChild(cell1);
+                newRow.appendChild(cell2);
+                newRow.appendChild(cell3);
+                tableBody.appendChild(newRow);
             }
         }
 
         function onScanFailure(error) {
-            // Fehler im Hintergrund ignorieren (sucht noch nach QR-Code)
+            // Ignorieren (sucht weiter im Hintergrund)
         }
 
         function exportToCSV() {
             if (scannedItems.length === 0) { alert("Die Liste ist leer!"); return; }
             let csvContent = "\uFEFFZeitpunkt;Interne Nummer;Seriennummer\n";
-            scannedItems.forEach(item => { csvContent += `\${item.timestamp};\${item.intNum};\${item.serNum}\n`; });
+            scannedItems.forEach(function(item) { 
+                csvContent += item.timestamp + ";" + item.intNum + ";" + item.serNum + "\n"; 
+            });
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = `Verkaufsliste_\${new Date().toISOString().slice(0,10)}.csv`;
+            link.download = "Verkaufsliste_" + new Date().toISOString().slice(0,10) + ".csv";
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
         }
     </script>
