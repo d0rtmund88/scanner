@@ -71,7 +71,7 @@
 <body>
 
     <div class="container">
-        <h1>Verkaufsscanner (DataMatrix & QR)</h1>
+        <h1>Verkaufsscanner (Muster-Erkennung)</h1>
         
         <div class="setup-box">
             <button class="start-btn" id="initBtn" onclick="berechtigungAnfordern()">1. Kameras suchen & erlauben</button>
@@ -80,7 +80,7 @@
                 <select id="cameraSelect"></select>
                 <button class="start-btn" onclick="startScanning()">2. Kamera-Stream starten</button>
             </div>
-            <button class="stop-btn" id="stopBtn" onclick="stopScanning()" style="style="display:none;"">Scanner stoppen</button>
+            <button class="stop-btn" id="stopBtn" onclick="stopScanning()" style="display:none;">Scanner stoppen</button>
         </div>
 
         <div class="scanner-wrapper">
@@ -156,44 +156,57 @@
             }
         }
 
-        // HIER WURDE DIE TRENNUNG BOMBENSICHER NEU GEBAUT
+        // HIER WURDE DIE LOGIK AUF HIGH-TECH MUSTERERKENNUNG UMGESTELLT
         function onScanSuccess(decodedText, decodedResult) {
-            let intNum = "Unbekannt";
-            let serNum = "Unbekannt";
-            
-            // 1. Versuch: Logistisches GS-Steuerzeichen (\x1D) austauschen gegen ein Semikolon
-            let cleanedText = decodedText.replace(/\x1D/g, ';').replace(/\x1E/g, ';').replace(/\x09/g, ';');
-            
-            // 2. Versuch: Nach gängigen Trennern splitten
-            let parts = [];
-            if (cleanedText.includes(';')) { parts = cleanedText.split(';'); }
-            else if (cleanedText.includes(',')) { parts = cleanedText.split(','); }
-            else { parts = cleanedText.split(/[\r\n\s]+/); } // Bei Zeilenumbruch oder Leerzeichen trennen
+            let intNum = "Nicht erkannt";
+            let serNum = "Nicht erkannt";
 
-            // Leere Einträge entfernen
-            parts = parts.filter(function(p) { return p.trim().length > 0; });
+            // Bereinige den gescannten Text von unsichtbarem Steuer-Müll
+            let cleanText = decodedText.replace(/[\x00-\x1F\x7F-\x9F]/g, ' ');
 
-            if (parts.length >= 2) {
-                intNum = parts[0].trim();
-                serNum = parts[1].trim();
-            } else if (parts.length === 1) {
-                // Notfall-Fallback falls gar kein Trenner anschlägt: 
-                // Wir suchen im Text nach "HR8_" (Anfang der internen Nummer auf deinem Etikett)
-                let text = parts[0];
-                let index = text.indexOf("HR8_");
-                if (index !== -1) {
-                    intNum = text.substring(index, index + 7); // Schneidet z.B. HR8_002 aus
-                    // Der Rest wird als Seriennummer angenommen
-                    serNum = text.replace(intNum, "").trim();
-                } else {
-                    intNum = text;
+            // Suchmuster (Reguläre Ausdrücke) basierend auf deinem Foto:
+            // Interne Nummer hat ein Unterstrich-Muster, z.B. HR8_002
+            const intPattern = /(HR8_[A-Za-z0-9]+)/i;
+            // Seriennummer hat direkt Nummern nach der 8, z.B. HR80034
+            const serPattern = /(HR80[0-9]+)/i;
+
+            // Versuche die Interne Nummer im Text zu finden
+            const intMatch = cleanText.match(intPattern);
+            if (intMatch) {
+                intNum = intMatch[1].toUpperCase();
+            }
+
+            // Versuche die Seriennummer im Text zu finden
+            const serMatch = cleanText.match(serPattern);
+            if (serMatch) {
+                serNum = serMatch[1].toUpperCase();
+            }
+
+            // FALLBACK: Falls die festen Muster oben nicht greifen (z.B. bei anderen QR-Codes), 
+            // nutzen wir die klassische Texttrennung als Sicherheitsnetz
+            if (intNum === "Nicht erkannt" || serNum === "Nicht erkannt") {
+                let parts = cleanText.split(/[\s,;]+/);
+                parts = parts.filter(function(p) { return p.trim().length > 2; }); // Nur sinnvolle Textteile
+                
+                if (parts.length >= 2) {
+                    // Wenn der erste Teil ein "_" hat, ist es die interne Nummer
+                    if (parts[0].includes('_')) {
+                        intNum = parts[0].trim();
+                        serNum = parts[1].trim();
+                    } else {
+                        intNum = parts[1].trim();
+                        serNum = parts[0].trim();
+                    }
+                } else if (parts.length === 1) {
+                    intNum = parts[0].trim();
                 }
             }
 
             const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
             const existiertBereits = scannedItems.some(function(item) { return item.serNum === serNum; });
 
-            if (!existiertBereits) {
+            // Trage es nur ein, wenn wir mindestens eine Nummer sinnvoll erkannt haben
+            if (!existiertBereits && serNum !== "Nicht erkannt") {
                 const jetzt = Date.now();
                 if (jetzt - lastAudioTime > 1000) {
                     try {
