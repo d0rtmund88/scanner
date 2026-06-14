@@ -6,19 +6,36 @@
     <title>QR-Code Verkaufsscanner</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 15px; background-color: #f5f7fa; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; }
-        h1 { text-align: center; color: #1a365d; font-size: 22px; margin-bottom: 15px; }
-        .setup-box { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); margin-bottom: 15px; text-align: center; }
-        select { width: 100%; padding: 10px; margin: 10px 0; font-size: 16px; border-radius: 6px; border: 1px solid #cbd5e0; }
-        #reader { width: 100%; background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 15px; }
-        button { color: white; border: none; padding: 12px 20px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-bottom: 10px; }
+        body { font-family: sans-serif; margin: 0; padding: 10px; background-color: #f5f7fa; color: #333; }
+        .container { max-width: 500px; margin: 0 auto; }
+        h1 { text-align: center; color: #1a365d; font-size: 20px; margin: 10px 0; }
+        .setup-box { background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 10px; text-align: center; }
+        select { width: 100%; padding: 8px; margin: 8px 0; font-size: 15px; border-radius: 6px; border: 1px solid #cbd5e0; }
+        
+        /* HIER WURDE DIE KAMERA KLEINER GEMACHT */
+        #reader { 
+            width: 100%; 
+            max-height: 220px; /* Begrenzt die Höhe des Kamerafensters */
+            background: #000; 
+            border-radius: 8px; 
+            overflow: hidden; 
+            margin-bottom: 10px; 
+        }
+        #reader video {
+            max-height: 220px !important; /* Erzwingt die kleinere Höhe auch für das Live-Video */
+            object-fit: cover; /* Schneidet das Video sauber zu, damit es nicht verzerrt */
+        }
+
+        button { color: white; border: none; padding: 10px 15px; font-size: 15px; font-weight: bold; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; }
         .start-btn { background-color: #3182ce; }
         .stop-btn { background-color: #e53e3e; }
-        .download-btn { background-color: #38a169; }
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-        th, td { padding: 12px; text-align: left; font-size: 14px; border-bottom: 1px solid #e2e8f0; }
-        th { background-color: #edf2f7; color: #4a5568; }
+        .download-btn { background-color: #38a169; margin-top: 10px; }
+        
+        /* Tabelle kompakter für Smartphones */
+        .table-container { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px 10px; text-align: left; font-size: 13px; border-bottom: 1px solid #e2e8f0; }
+        th { background-color: #edf2f7; color: #4a5568; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -29,7 +46,7 @@
         <div class="setup-box">
             <button class="start-btn" id="initBtn" onclick="berechtigungAnfordern()">1. Kameras suchen & erlauben</button>
             <div id="cameraSelectContainer" style="display:none;">
-                <label for="cameraSelect"><b>Wähle eine Kamera (meistens die letzte für die Rückkamera):</b></label>
+                <label for="cameraSelect"><b>Wähle eine Kamera:</b></label>
                 <select id="cameraSelect"></select>
                 <button class="start-btn" onclick="startScanning()">2. Kamera-Stream starten</button>
             </div>
@@ -38,23 +55,24 @@
 
         <div id="reader"></div>
 
-        <button class="download-btn" onclick="exportToCSV()">Liste als CSV herunterladen</button>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr><th>Zeit</th><th>Interne Nr.</th><th>Seriennummer</th></tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr id="noDataRow"><td colspan="3" style="text-align:center; color:#718096;">Noch keine Geräte gescannt</td></tr>
+                </tbody>
+            </table>
+        </div>
 
-        <table>
-            <thead>
-                <tr><th>Zeitpunkt</th><th>Interne Nummer</th><th>Seriennummer</th></tr>
-            </thead>
-            <tbody id="tableBody">
-                <tr id="noDataRow"><td colspan="3" style="text-align:center; color:#718096;">Noch keine Geräte gescannt</td></tr>
-            </tbody>
-        </table>
+        <button class="download-btn" onclick="exportToCSV()">Liste als CSV herunterladen</button>
     </div>
 
     <script>
         const scannedItems = [];
         let html5QrCode;
 
-        // Schritt 1: Kamera-Rechte anfordern und Liste laden
         function berechtigungAnfordern() {
             Html5Qrcode.getCameras().then(devices => {
                 if (devices && devices.length > 0) {
@@ -84,7 +102,6 @@
             });
         }
 
-        // Schritt 2: Ausgewählte Kamera starten
         function startScanning() {
             const cameraId = document.getElementById('cameraSelect').value;
             
@@ -92,8 +109,9 @@
                 cameraId, 
                 {
                     fps: 10,
+                    // Der Scan-Bereich wurde ebenfalls an die neue Höhe angepasst
                     qrbox: function(viewfinderWidth, viewfinderHeight) {
-                        return { width: viewfinderWidth * 0.7, height: viewfinderWidth * 0.7 };
+                        return { width: viewfinderWidth * 0.6, height: 150 };
                     }
                 },
                 onScanSuccess,
@@ -115,9 +133,7 @@
             }
         }
 
-        // HIER WURDE DIE LOGIK GEÄNDERT: Platzhalter wurden durch sichere Text-Befehle ersetzt
         function onScanSuccess(decodedText, decodedResult) {
-            // Kurzer Piepton bei Erfolg
             try {
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const osc = audioCtx.createOscillator();
@@ -130,17 +146,14 @@
             const serNum = parts[1] ? parts[1].trim() : "Unbekannt";
             const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
 
-            // Prüfen ob Seriennummer schon in der Liste ist
             const existiertBereits = scannedItems.some(function(item) { return item.serNum === serNum; });
 
             if (!existiertBereits) {
                 const noDataRow = document.getElementById("noDataRow");
                 if (noDataRow) noDataRow.remove();
 
-                // Im Speicher sichern
                 scannedItems.push({ timestamp: timestamp, intNum: intNum, serNum: serNum });
 
-                // Neue Tabellenzeile komplett fehlerfrei erstellen
                 const tableBody = document.getElementById("tableBody");
                 const newRow = document.createElement("tr");
 
@@ -156,12 +169,14 @@
                 newRow.appendChild(cell1);
                 newRow.appendChild(cell2);
                 newRow.appendChild(cell3);
-                tableBody.appendChild(newRow);
+                
+                // Fügt das neueste Element GANZ OBEN in der Tabelle ein, damit man es sofort sieht
+                tableBody.insertBefore(newRow, tableBody.firstChild);
             }
         }
 
         function onScanFailure(error) {
-            // Ignorieren (sucht weiter im Hintergrund)
+            // Ignorieren (sucht im Hintergrund weiter)
         }
 
         function exportToCSV() {
