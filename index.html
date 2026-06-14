@@ -4,28 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QR-Code Verkaufsscanner</title>
-    <script src="https://unpkg.com/@html5-qrcode/html5-qrcode"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 20px; background-color: #f5f7fa; color: #333; }
+        body { font-family: sans-serif; margin: 0; padding: 15px; background-color: #f5f7fa; color: #333; }
         .container { max-width: 600px; margin: 0 auto; }
-        h1 { text-align: center; color: #1a365d; font-size: 24px; }
-        #reader { width: 100%; background: white; padding: 10px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-        .button-container { text-align: center; margin: 25px 0; }
-        button { background-color: #2b6cb0; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; }
-        .download-btn { background-color: #2f855a; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-        th, td { padding: 12px 15px; text-align: left; font-size: 14px; border-bottom: 1px solid #e2e8f0; }
-        th { background-color: #f7fafc; color: #4a5568; }
+        h1 { text-align: center; color: #1a365d; font-size: 22px; margin-bottom: 15px; }
+        .setup-box { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); margin-bottom: 15px; text-align: center; }
+        select { width: 100%; padding: 10px; margin: 10px 0; font-size: 16px; border-radius: 6px; border: 1px solid #cbd5e0; }
+        #reader { width: 100%; background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 15px; }
+        button { color: white; border: none; padding: 12px 20px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-bottom: 10px; }
+        .start-btn { background-color: #3182ce; }
+        .stop-btn { background-color: #e53e3e; }
+        .download-btn { background-color: #38a169; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+        th, td { padding: 12px; text-align: left; font-size: 14px; border-bottom: 1px solid #e2e8f0; }
+        th { background-color: #edf2f7; color: #4a5568; }
     </style>
 </head>
 <body>
 
     <div class="container">
         <h1>QR-Code Verkaufsscanner</h1>
-        <div id="reader"></div>
-        <div class="button-container">
-            <button class="download-btn" onclick="exportToCSV()">Liste als CSV herunterladen</button>
+        
+        <div class="setup-box">
+            <button class="start-btn" id="initBtn" onclick="berechtigungAnfordern()">1. Kameras suchen & erlauben</button>
+            <div id="cameraSelectContainer" style="display:none;">
+                <label for="cameraSelect"><b>Wähle eine Kamera (meistens die letzte für die Rückkamera):</b></label>
+                <select id="cameraSelect"></select>
+                <button class="start-btn" onclick="startScanning()">2. Kamera-Stream starten</button>
+            </div>
+            <button class="stop-btn" id="stopBtn" onclick="stopScanning()" style="display:none;">Scanner stoppen</button>
         </div>
+
+        <div id="reader"></div>
+
+        <button class="download-btn" onclick="exportToCSV()">Liste als CSV herunterladen</button>
+
         <table>
             <thead>
                 <tr><th>Zeitpunkt</th><th>Interne Nummer</th><th>Seriennummer</th></tr>
@@ -38,13 +52,80 @@
 
     <script>
         const scannedItems = [];
+        let html5QrCode;
+        let currentCameraId;
 
-        function onScanSuccess(decodedText) {
+        // Schritt 1: Kamera-Rechte anfordern und Liste laden
+        function berechtigungAnfordern() {
+            Html5Qrcode.getCameras().then(devices => {
+                if (devices && devices.length > 0) {
+                    const select = document.getElementById('cameraSelect');
+                    select.innerHTML = ''; // Leeren
+                    
+                    devices.forEach((device, index) => {
+                        const option = document.createElement('option');
+                        option.value = device.id;
+                        // Text lesbar machen (Kamera 1, Kamera 2...)
+                        option.text = device.label || `Kamera ${index + 1}`;
+                        select.appendChild(option);
+                    });
+
+                    // Wenn es mehrere Kameras gibt (z.B. Weitwinkel/Tele), ist die letzte oft die Haupt-Rückkamera
+                    if(devices.length > 1) {
+                        select.selectedIndex = devices.length - 1;
+                    }
+
+                    document.getElementById('cameraSelectContainer').style.display = 'block';
+                    document.getElementById('initBtn').style.display = 'none';
+                    
+                    // Scanner-Objekt vorbereiten
+                    html5QrCode = new Html5Qrcode("reader");
+                } else {
+                    alert("Keine Kameras am Gerät gefunden.");
+                }
+            }).catch(err => {
+                alert("Fehler beim Zugriff auf Kameras. Bitte erlaube den Kamerazugriff im Browser!\nDetails: " + err);
+            });
+        }
+
+        // Schritt 2: Ausgewählte Kamera starten
+        function startScanning() {
+            const cameraId = document.getElementById('cameraSelect').value;
+            
+            html5QrCode.start(
+                cameraId, 
+                {
+                    fps: 10,
+                    qrbox: function(viewfinderWidth, viewfinderHeight) {
+                        return { width: viewfinderWidth * 0.7, height: viewfinderWidth * 0.7 };
+                    }
+                },
+                onScanSuccess,
+                onScanFailure
+            ).then(() => {
+                document.getElementById('cameraSelectContainer').style.display = 'none';
+                document.getElementById('stopBtn').style.display = 'block';
+            }).catch(err => {
+                alert("Kamera konnte nicht gestartet werden: " + err);
+            });
+        }
+
+        function stopScanning() {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    document.getElementById('cameraSelectContainer').style.display = 'block';
+                    document.getElementById('stopBtn').style.display = 'none';
+                });
+            }
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            // Kurzer Piepton bei Erfolg
             try {
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const osc = audioCtx.createOscillator();
                 osc.connect(audioCtx.destination);
-                osc.start(); osc.stop(0.1);
+                osc.start(); osc.stop(0.08);
             } catch(e) {}
 
             let parts = decodedText.includes(';') ? decodedText.split(';') : (decodedText.includes(',') ? decodedText.split(',') : decodedText.split(/\r?\n/));
@@ -59,20 +140,23 @@
                 scannedItems.push({ timestamp, intNum, serNum });
                 const row = `<tr><td>\${timestamp}</td><td><b>\${intNum}</b></td><td><b>\${serNum}</b></td></tr>`;
                 document.getElementById("tableBody").innerHTML += row;
-            } else {
-                alert("Bereits gescannt: " + serNum);
             }
         }
 
-        // HIER IST DIE ÄNDERUNG: Erzwinge die Rückkamera (environment)
-        const html5QrcodeScanner = new Html5QrcodeScanner(
-            "reader", { fps: 10, qrbox: 250, videoConstraints: { facingMode: { exact: "environment" } } }
-        );
-        
-        // Falls "exact" fehlschlägt (z.B. am PC ohne Rückkamera), nutzen wir den Standard-Fallback
-        html5QrcodeScanner.render(onScanSuccess, (errorMessage) => {
-            // Fehler beim Scannen ignorieren, um Schleifen zu vermeiden
-        });
+        function onScanFailure(error) {
+            // Fehler im Hintergrund ignorieren (sucht noch nach QR-Code)
+        }
+
+        function exportToCSV() {
+            if (scannedItems.length === 0) { alert("Die Liste ist leer!"); return; }
+            let csvContent = "\uFEFFZeitpunkt;Interne Nummer;Seriennummer\n";
+            scannedItems.forEach(item => { csvContent += `\${item.timestamp};\${item.intNum};\${item.serNum}\n`; });
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `Verkaufsliste_\${new Date().toISOString().slice(0,10)}.csv`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
     </script>
 </body>
 </html>
