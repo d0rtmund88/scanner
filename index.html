@@ -12,57 +12,19 @@
         .setup-box { background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 10px; text-align: center; }
         select { width: 100%; padding: 8px; margin: 8px 0; font-size: 15px; border-radius: 6px; border: 1px solid #cbd5e0; }
         
-        /* KAMERA-CONTAINER */
-        .scanner-wrapper {
-            position: relative;
-            width: 100%;
-            max-height: 320px;
-            border-radius: 8px;
-            overflow: hidden;
-            margin-bottom: 10px;
-            background: #000;
-        }
+        /* HIER WURDE DIE KAMERA ETWAS GRÖSSER GEMACHT */
         #reader { 
             width: 100%; 
-            max-height: 320px; 
+            max-height: 320px; /* Erhöht von 220px auf 320px für besseres Scannen */
+            background: #000; 
+            border-radius: 8px; 
+            overflow: hidden; 
+            margin-bottom: 10px; 
         }
         #reader video {
             max-height: 320px !important; 
             object-fit: cover; 
         }
-
-        /* HIER ENTSTEHT DER QUADRATISCHE SCAN-RAHMEN MIT DEN 4 ECKEN */
-        .scan-overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; /* Klicks durchlassen */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: inset 0 0 0 200px rgba(0, 0, 0, 0.4); /* Abdunklung außen herum */
-        }
-        .scan-box {
-            width: 200px;  /* Genau abgestimmt auf den Erkennungsbereich (qrbox) */
-            height: 200px;
-            position: relative;
-            box-sizing: border-box;
-        }
-        /* Die 4 quadratischen Ecken zeichnen */
-        .scan-box::before, .scan-box::after, .scan-box span::before, .scan-box span::after {
-            content: "";
-            position: absolute;
-            width: 25px;
-            height: 25px;
-            border: 4px solid #3182ce; /* Schönes Blau für das Visier */
-        }
-        /* Oben links */
-        .scan-box::before { top: 0; left: 0; border-right: none; border-bottom: none; }
-        /* Oben rechts */
-        .scan-box::after { top: 0; right: 0; border-left: none; border-bottom: none; }
-        /* Unten links */
-        .scan-box span::before { bottom: 0; left: 0; border-right: none; border-top: none; }
-        /* Unten rechts */
-        .scan-box span::after { bottom: 0; right: 0; border-left: none; border-top: none; }
 
         button { color: white; border: none; padding: 10px 15px; font-size: 15px; font-weight: bold; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; }
         .start-btn { background-color: #3182ce; }
@@ -87,4 +49,152 @@
                 <select id="cameraSelect"></select>
                 <button class="start-btn" onclick="startScanning()">2. Kamera-Stream starten</button>
             </div>
-            <button class="stop-btn" id="stopBtn" onclick="stopScanning()" style="display:none;">Scanner stoppen</
+            <button class="stop-btn" id="stopBtn" onclick="stopScanning()" style="display:none;">Scanner stoppen</button>
+        </div>
+
+        <div id="reader"></div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr><th>Zeit</th><th>Interne Nr.</th><th>Seriennummer</th></tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr id="noDataRow"><td colspan="3" style="text-align:center; color:#718096;">Noch keine Geräte gescannt</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <button class="download-btn" onclick="exportToCSV()">Liste als CSV herunterladen</button>
+    </div>
+
+    <script>
+        const scannedItems = [];
+        let html5QrCode;
+        let lastAudioTime = 0; // Sperre für den Piepton
+
+        function berechtigungAnfordern() {
+            Html5Qrcode.getCameras().then(devices => {
+                if (devices && devices.length > 0) {
+                    const select = document.getElementById('cameraSelect');
+                    select.innerHTML = ''; 
+                    
+                    devices.forEach((device, index) => {
+                        const option = document.createElement('option');
+                        option.value = device.id;
+                        option.text = device.label || "Kamera " + (index + 1);
+                        select.appendChild(option);
+                    });
+
+                    if(devices.length > 1) {
+                        select.selectedIndex = devices.length - 1;
+                    }
+
+                    document.getElementById('cameraSelectContainer').style.display = 'block';
+                    document.getElementById('initBtn').style.display = 'none';
+                    
+                    html5QrCode = new Html5Qrcode("reader");
+                } else {
+                    alert("Keine Kameras am Gerät gefunden.");
+                }
+            }).catch(err => {
+                alert("Fehler beim Zugriff auf Kameras: " + err);
+            });
+        }
+
+        function startScanning() {
+            const cameraId = document.getElementById('cameraSelect').value;
+            
+            html5QrCode.start(
+                cameraId, 
+                {
+                    fps: 10,
+                    // Scanbereich an die neue Höhe angepasst
+                    qrbox: function(viewfinderWidth, viewfinderHeight) {
+                        return { width: viewfinderWidth * 0.7, height: 200 };
+                    }
+                },
+                onScanSuccess,
+                onScanFailure
+            ).then(() => {
+                document.getElementById('cameraSelectContainer').style.display = 'none';
+                document.getElementById('stopBtn').style.display = 'block';
+            }).catch(err => {
+                alert("Kamera konnte nicht gestartet werden: " + err);
+            });
+        }
+
+        function stopScanning() {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    document.getElementById('cameraSelectContainer').style.display = 'block';
+                    document.getElementById('stopBtn').style.display = 'none';
+                });
+            }
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            let parts = decodedText.includes(';') ? decodedText.split(';') : (decodedText.includes(',') ? decodedText.split(',') : decodedText.split(/\r?\n/));
+            const intNum = parts[0] ? parts[0].trim() : "Unbekannt";
+            const serNum = parts[1] ? parts[1].trim() : "Unbekannt";
+            const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+
+            const existiertBereits = scannedItems.some(function(item) { return item.serNum === serNum; });
+
+            if (!existiertBereits) {
+                // HIER WURDE DER PIEPTON OPTIMIERT: Nur abspielen, wenn der letzte Ton länger als 1 Sekunde her ist
+                const jetzt = Date.now();
+                if (jetzt - lastAudioTime > 1000) {
+                    try {
+                        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                        const osc = audioCtx.createOscillator();
+                        osc.connect(audioCtx.destination);
+                        osc.start(); osc.stop(0.08);
+                        lastAudioTime = jetzt;
+                    } catch(e) {}
+                }
+
+                const noDataRow = document.getElementById("noDataRow");
+                if (noDataRow) noDataRow.remove();
+
+                scannedItems.push({ timestamp: timestamp, intNum: intNum, serNum: serNum });
+
+                const tableBody = document.getElementById("tableBody");
+                const newRow = document.createElement("tr");
+
+                const cell1 = document.createElement("td");
+                cell1.textContent = timestamp;
+                
+                const cell2 = document.createElement("td");
+                cell2.innerHTML = "<b>" + intNum + "</b>";
+                
+                const cell3 = document.createElement("td");
+                cell3.innerHTML = "<b>" + serNum + "</b>";
+
+                newRow.appendChild(cell1);
+                newRow.appendChild(cell2);
+                newRow.appendChild(cell3);
+                
+                tableBody.insertBefore(newRow, tableBody.firstChild);
+            }
+        }
+
+        function onScanFailure(error) {
+            // Ignorieren (sucht im Hintergrund weiter)
+        }
+
+        function exportToCSV() {
+            if (scannedItems.length === 0) { alert("Die Liste ist leer!"); return; }
+            let csvContent = "\uFEFFZeitpunkt;Interne Nummer;Seriennummer\n";
+            scannedItems.forEach(function(item) { 
+                csvContent += item.timestamp + ";" + item.intNum + ";" + item.serNum + "\n"; 
+            });
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "Verkaufsliste_" + new Date().toISOString().slice(0,10) + ".csv";
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
