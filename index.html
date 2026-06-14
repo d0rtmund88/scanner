@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR-Code Verkaufsscanner</title>
+    <title>QR & DataMatrix Verkaufsscanner</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
         body { font-family: sans-serif; margin: 0; padding: 10px; background-color: #f5f7fa; color: #333; }
@@ -12,7 +12,6 @@
         .setup-box { background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 10px; text-align: center; }
         select { width: 100%; padding: 8px; margin: 8px 0; font-size: 15px; border-radius: 6px; border: 1px solid #cbd5e0; }
         
-        /* KAMERA-CONTAINER */
         .scanner-wrapper {
             position: relative;
             width: 100%;
@@ -31,37 +30,31 @@
             object-fit: cover; 
         }
 
-        /* HIER ENTSTEHT DER QUADRATISCHE SCAN-RAHMEN MIT DEN 4 ECKEN */
         .scan-overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; /* Klicks durchlassen */
+            pointer-events: none;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: inset 0 0 0 200px rgba(0, 0, 0, 0.4); /* Abdunklung außen herum */
+            box-shadow: inset 0 0 0 200px rgba(0, 0, 0, 0.4);
         }
         .scan-box {
-            width: 200px;  /* Genau abgestimmt auf den Erkennungsbereich (qrbox) */
+            width: 200px;  
             height: 200px;
             position: relative;
             box-sizing: border-box;
         }
-        /* Die 4 quadratischen Ecken zeichnen */
         .scan-box::before, .scan-box::after, .scan-box span::before, .scan-box span::after {
             content: "";
             position: absolute;
             width: 25px;
             height: 25px;
-            border: 4px solid #3182ce; /* Schönes Blau für das Visier */
+            border: 4px solid #2ecc71; /* Knalliges Grün fürs Visier */
         }
-        /* Oben links */
         .scan-box::before { top: 0; left: 0; border-right: none; border-bottom: none; }
-        /* Oben rechts */
         .scan-box::after { top: 0; right: 0; border-left: none; border-bottom: none; }
-        /* Unten links */
         .scan-box span::before { bottom: 0; left: 0; border-right: none; border-top: none; }
-        /* Unten rechts */
         .scan-box span::after { bottom: 0; right: 0; border-left: none; border-top: none; }
 
         button { color: white; border: none; padding: 10px 15px; font-size: 15px; font-weight: bold; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; }
@@ -78,7 +71,7 @@
 <body>
 
     <div class="container">
-        <h1>QR-Code Verkaufsscanner</h1>
+        <h1>Verkaufsscanner (DataMatrix & QR)</h1>
         
         <div class="setup-box">
             <button class="start-btn" id="initBtn" onclick="berechtigungAnfordern()">1. Kameras suchen & erlauben</button>
@@ -121,28 +114,18 @@
                 if (devices && devices.length > 0) {
                     const select = document.getElementById('cameraSelect');
                     select.innerHTML = ''; 
-                    
                     devices.forEach((device, index) => {
                         const option = document.createElement('option');
                         option.value = device.id;
                         option.text = device.label || "Kamera " + (index + 1);
                         select.appendChild(option);
                     });
-
-                    if(devices.length > 1) {
-                        select.selectedIndex = devices.length - 1;
-                    }
-
+                    if(devices.length > 1) { select.selectedIndex = devices.length - 1; }
                     document.getElementById('cameraSelectContainer').style.display = 'block';
                     document.getElementById('initBtn').style.display = 'none';
-                    
                     html5QrCode = new Html5Qrcode("reader");
-                } else {
-                    alert("Keine Kameras am Gerät gefunden.");
-                }
-            }).catch(err => {
-                alert("Fehler beim Zugriff auf Kameras: " + err);
-            });
+                } else { alert("Keine Kameras gefunden."); }
+            }).catch(err => { alert("Fehler beim Zugriff auf Kameras: " + err); });
         }
 
         function startScanning() {
@@ -151,19 +134,18 @@
             html5QrCode.start(
                 cameraId, 
                 {
-                    fps: 10,
-                    // Die Erkennungs-Box im Hintergrund passt exakt zu unserem sichtbaren 200x200px Quadrat
-                    qrbox: { width: 200, height: 200 }
+                    fps: 15, // Etwas schneller für Barcodes
+                    qrbox: { width: 200, height: 200 },
+                    // HIER ERZWINGEN WIR DATAMATRIX-UNTERSTÜTZUNG
+                    formatsToSupport: [ Html5QrcodeSupportedFormats.DATA_MATRIX, Html5QrcodeSupportedFormats.QR_CODE ]
                 },
                 onScanSuccess,
                 onScanFailure
             ).then(() => {
                 document.getElementById('cameraSelectContainer').style.display = 'none';
                 document.getElementById('stopBtn').style.display = 'block';
-                document.getElementById('overlay').style.display = 'flex'; // Visier einblenden
-            }).catch(err => {
-                alert("Kamera konnte nicht gestartet werden: " + err);
-            });
+                document.getElementById('overlay').style.display = 'flex';
+            }).catch(err => { alert("Kamera-Start fehlgeschlagen: " + err); });
         }
 
         function stopScanning() {
@@ -171,13 +153,24 @@
                 html5QrCode.stop().then(() => {
                     document.getElementById('cameraSelectContainer').style.display = 'block';
                     document.getElementById('stopBtn').style.display = 'none';
-                    document.getElementById('overlay').style.display = 'none'; // Visier ausblenden
+                    document.getElementById('overlay').style.display = 'none';
                 });
             }
         }
 
         function onScanSuccess(decodedText, decodedResult) {
-            let parts = decodedText.includes(';') ? decodedText.split(';') : (decodedText.includes(',') ? decodedText.split(',') : decodedText.split(/\r?\n/));
+            // Intelligentere Trennung: Teilt bei Semikolon, Komma, Zeilenumbruch ODER unsichtbaren Steuerzeichen (GS/Tab/Whitespace)
+            let parts = [];
+            if (decodedText.includes(';')) { parts = decodedText.split(';'); }
+            else if (decodedText.includes(',')) { parts = decodedText.split(','); }
+            else { 
+                // Trennt bei Zeilenumbrüchen oder mehreren Leerzeichen/Steuerzeichen nacheinander
+                parts = decodedText.split(/[\r\n\x1D\x1E\x09\s]+/); 
+            }
+            
+            // Leere Einträge filtern
+            parts = parts.filter(function(p) { return p.trim().length > 0; });
+
             const intNum = parts[0] ? parts[0].trim() : "Unbekannt";
             const serNum = parts[1] ? parts[1].trim() : "Unbekannt";
             const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
@@ -204,33 +197,21 @@
                 const tableBody = document.getElementById("tableBody");
                 const newRow = document.createElement("tr");
 
-                const cell1 = document.createElement("td");
-                cell1.textContent = timestamp;
-                
-                const cell2 = document.createElement("td");
-                cell2.innerHTML = "<b>" + intNum + "</b>";
-                
-                const cell3 = document.createElement("td");
-                cell3.innerHTML = "<b>" + serNum + "</b>";
+                const cell1 = document.createElement("td"); cell1.textContent = timestamp;
+                const cell2 = document.createElement("td"); cell2.innerHTML = "<b>" + intNum + "</b>";
+                const cell3 = document.createElement("td"); cell3.innerHTML = "<b>" + serNum + "</b>";
 
-                newRow.appendChild(cell1);
-                newRow.appendChild(cell2);
-                newRow.appendChild(cell3);
-                
+                newRow.appendChild(cell1); newRow.appendChild(cell2); newRow.appendChild(cell3);
                 tableBody.insertBefore(newRow, tableBody.firstChild);
             }
         }
 
-        function onScanFailure(error) {
-            // Ignorieren (sucht im Hintergrund weiter)
-        }
+        function onScanFailure(error) {}
 
         function exportToCSV() {
             if (scannedItems.length === 0) { alert("Die Liste ist leer!"); return; }
             let csvContent = "\uFEFFZeitpunkt;Interne Nummer;Seriennummer\n";
-            scannedItems.forEach(function(item) { 
-                csvContent += item.timestamp + ";" + item.intNum + ";" + item.serNum + "\n"; 
-            });
+            scannedItems.forEach(function(item) { csvContent += item.timestamp + ";" + item.intNum + ";" + item.serNum + "\n"; });
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
