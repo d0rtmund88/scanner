@@ -94,7 +94,7 @@
             box-shadow: 0 0 12px #00ff88;
         }
 
-        /* PREMIUM BUTTONS WITH FEEDBACK EFFECTS */
+        /* PREMIUM BUTTONS */
         button { 
             color: white; 
             border: none; 
@@ -197,18 +197,42 @@
         let html5QrCode;
         let lastAudioTime = 0; 
 
+        // HIER WURDE DIE DEUTSCHE ÜBERSETZUNG FÜR DIE KAMERAS EINGEBAUT
         function berechtigungAnfordern() {
             Html5Qrcode.getCameras().then(devices => {
                 if (devices && devices.length > 0) {
                     const select = document.getElementById('cameraSelect');
                     select.innerHTML = ''; 
+                    
                     devices.forEach((device, index) => {
                         const option = document.createElement('option');
                         option.value = device.id;
-                        option.text = device.label || "Kamera " + (index + 1);
+                        
+                        let labelText = device.label.toLowerCase();
+                        
+                        // Erkennung und saubere deutsche Benennung
+                        if (labelText.includes('back') || labelText.includes('rück') || labelText.includes('haupt')) {
+                            option.text = "Kamera hinten";
+                        } else if (labelText.includes('front') || labelText.includes('vorn')) {
+                            option.text = "Kamera vorne";
+                        } else {
+                            // Fallback falls der Name unklar ist
+                            option.text = "Kamera " + (index + 1);
+                        }
+                        
                         select.appendChild(option);
                     });
-                    if(devices.length > 1) { select.selectedIndex = devices.length - 1; }
+                    
+                    // Standardmäßig die Rückkamera (oft die letzte in der Liste) vorauswählen
+                    if(devices.length > 1) { select.selectedIndex = 0; } 
+                    // Falls "Kamera hinten" existiert, diese aktiv setzen
+                    for (let i = 0; i < select.options.length; i++) {
+                        if (select.options[i].text === "Kamera hinten") {
+                            select.selectedIndex = i;
+                            break;
+                        }
+                    }
+
                     document.getElementById('cameraSelectContainer').style.display = 'block';
                     document.getElementById('initBtn').style.display = 'none';
                     html5QrCode = new Html5Qrcode("reader");
@@ -240,7 +264,6 @@
             if (html5QrCode) {
                 html5QrCode.stop().then(() => {
                     document.getElementById('cameraSelectContainer').style.display = 'block';
-                    document.getElementById('stopBtn').style.none = 'none';
                     document.getElementById('stopBtn').style.display = 'none';
                     document.getElementById('overlay').style.display = 'none';
                 });
