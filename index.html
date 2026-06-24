@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR & DataMatrix Verkaufsscanner</title>
+    <title>Mehrzeilen Verkaufsscanner</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
         body { font-family: sans-serif; margin: 0; padding: 10px; background-color: #f5f7fa; color: #333; }
-        .container { max-width: 500px; margin: 0 auto; }
+        .container { max-width: 600px; margin: 0 auto; }
         h1 { text-align: center; color: #1a365d; font-size: 20px; margin: 10px 0; }
         .setup-box { background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 10px; text-align: center; }
         select { width: 100%; padding: 8px; margin: 8px 0; font-size: 15px; border-radius: 6px; border: 1px solid #cbd5e0; }
@@ -15,7 +15,7 @@
         .scanner-wrapper {
             position: relative;
             width: 100%;
-            max-height: 320px;
+            max-height: 280px;
             border-radius: 8px;
             overflow: hidden;
             margin-bottom: 10px;
@@ -23,10 +23,10 @@
         }
         #reader { 
             width: 100%; 
-            max-height: 320px; 
+            max-height: 280px; 
         }
         #reader video {
-            max-height: 320px !important; 
+            max-height: 280px !important; 
             object-fit: cover; 
         }
 
@@ -40,16 +40,16 @@
             box-shadow: inset 0 0 0 200px rgba(0, 0, 0, 0.4);
         }
         .scan-box {
-            width: 200px;  
-            height: 200px;
+            width: 160px;  
+            height: 160px;
             position: relative;
             box-sizing: border-box;
         }
         .scan-box::before, .scan-box::after, .scan-box span::before, .scan-box span::after {
             content: "";
             position: absolute;
-            width: 25px;
-            height: 25px;
+            width: 20px;
+            height: 20px;
             border: 4px solid #2ecc71; 
         }
         .scan-box::before { top: 0; left: 0; border-right: none; border-bottom: none; }
@@ -62,16 +62,16 @@
         .stop-btn { background-color: #e53e3e; }
         .download-btn { background-color: #3182ce; margin-top: 10px; }
         
-        .table-container { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-top: 10px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 8px 10px; text-align: left; font-size: 13px; border-bottom: 1px solid #e2e8f0; }
+        .table-container { background: white; border-radius: 8px; overflow-x: auto; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; min-width: 500px; }
+        th, td { padding: 8px 10px; text-align: left; font-size: 12px; border-bottom: 1px solid #e2e8f0; }
         th { background-color: #edf2f7; color: #4a5568; font-weight: 600; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>Verkaufsscanner</h1>
+        <h1>Mehrzeilen Barcode-Scanner</h1>
         
         <div class="setup-box">
             <button class="start-btn" id="initBtn" onclick="berechtigungAnfordern()">1. Kameras suchen & erlauben</button>
@@ -93,10 +93,16 @@
         <div class="table-container">
             <table>
                 <thead>
-                    <tr><th>Zeit</th><th>Interne Nr.</th><th>Seriennummer</th></tr>
+                    <tr>
+                        <th>Zeit</th>
+                        <th>Zeile 1</th>
+                        <th>Zeile 2</th>
+                        <th>Zeile 3</th>
+                        <th>Zeile 4</th>
+                    </tr>
                 </thead>
                 <tbody id="tableBody">
-                    <tr id="noDataRow"><td colspan="3" style="text-align:center; color:#718096;">Noch keine Geräte gescannt</td></tr>
+                    <tr id="noDataRow"><td colspan="5" style="text-align:center; color:#718096;">Noch keine Geräte gescannt</td></tr>
                 </tbody>
             </table>
         </div>
@@ -134,7 +140,7 @@
                 cameraId, 
                 {
                     fps: 15, 
-                    qrbox: { width: 200, height: 200 },
+                    qrbox: { width: 160, height: 160 },
                     formatsToSupport: [ Html5QrcodeSupportedFormats.DATA_MATRIX, Html5QrcodeSupportedFormats.QR_CODE ]
                 },
                 onScanSuccess,
@@ -156,47 +162,29 @@
             }
         }
 
-        // HIER WURDE DER ENTSCHEIDENDE FIX EINGEBAUT
+        // DIESE LOGIK TRENNT DEN INHALT PER ZEILENUMBRIUCH IN 4 SEPARATE WERTE
         function onScanSuccess(decodedText, decodedResult) {
-            let intNum = "-";
-            let serNum = "-";
-
-            // Text von unsichtbaren Zeichen reinigen
-            let cleanText = decodedText.replace(/[\x00-\x1F\x7F-\x9F]/g, ' ').trim();
-
-            // Versuche den Text an sichtbaren Trennern (Leerzeichen, Semikolon, Komma) aufzuteilen
-            let parts = cleanText.split(/[\s,;]+/);
-            parts = parts.filter(function(p) { return p.trim().length > 0; });
-
-            if (parts.length >= 2) {
-                // Intelligente Zuordnung anhand des Unterstrichs
-                if (parts[0].includes('_')) {
-                    intNum = parts[0].trim();
-                    serNum = parts[1].trim();
-                } else if (parts[1].includes('_')) {
-                    intNum = parts[1].trim();
-                    serNum = parts[0].trim();
-                } else {
-                    intNum = parts[0].trim();
-                    serNum = parts[1].trim();
-                }
-            } else if (parts.length === 1) {
-                // FALLBACK FIX: Wenn keine Trennung gelingt, packen wir den GANZEN Text in die interne Nummer.
-                // Dadurch bleibt jeder Scan einzigartig und blockiert nicht den nächsten!
-                intNum = parts[0].trim();
-                serNum = "-"; 
-            }
-
-            const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+            // GS1/Logistik-Steuerzeichen durch reguläre Zeilenumbrüche ersetzen, falls vorhanden
+            let normalizedText = decodedText.replace(/[\x1D\x1E\x09]/g, '\n');
             
-            // Doublettenschutz prüft jetzt entweder die Seriennummer ODER die interne Nummer, falls keine Seriennummer da ist
-            const existiertBereits = scannedItems.some(function(item) { 
-                if (serNum !== "-") {
-                    return item.serNum === serNum;
-                } else {
-                    return item.intNum === intNum;
-                }
-            });
+            // Text in Zeilen aufteilen
+            let lines = normalizedText.split(/\r?\n/);
+            
+            // Leere Zeilen ausfiltern und Trimmen
+            lines = lines.map(line => line.trim()).filter(line => line.length > 0);
+
+            // Wenn gar kein Text da ist, abbrechen
+            if (lines.length === 0) return;
+
+            // Fülle exakt 4 Zeilen auf (falls ein Code mal weniger Zeilen hat)
+            let z1 = lines[0] || "-";
+            let z2 = lines[1] || "-";
+            let z3 = lines[2] || "-";
+            let z4 = lines[3] || "-";
+
+            // Einzigartiger Schlüssel zur Vermeidung von Doppel-Scans (Kombination aus Zeile 1 und 2)
+            const uniqueKey = z1 + "_" + z2;
+            const existiertBereits = scannedItems.some(function(item) { return item.key === uniqueKey; });
 
             if (!existiertBereits) {
                 const jetzt = Date.now();
@@ -213,39 +201,45 @@
                 const noDataRow = document.getElementById("noDataRow");
                 if (noDataRow) noDataRow.remove();
 
-                scannedItems.push({ timestamp: timestamp, intNum: intNum, serNum: serNum });
+                const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+                scannedItems.push({ timestamp: timestamp, key: uniqueKey, z1: z1, z2: z2, z3: z3, z4: z4 });
 
                 const tableBody = document.getElementById("tableBody");
                 const newRow = document.createElement("tr");
 
-                const cell1 = document.createElement("td"); cell1.textContent = timestamp;
-                const cell2 = document.createElement("td"); cell2.innerHTML = "<b>" + intNum + "</b>";
-                const cell3 = document.createElement("td"); cell3.innerHTML = "<b>" + serNum + "</b>";
+                const cellTime = document.createElement("td"); cellTime.textContent = timestamp;
+                const cell1 = document.createElement("td"); cell1.textContent = z1;
+                const cell2 = document.createElement("td"); cell2.textContent = z2;
+                const cell3 = document.createElement("td"); cell3.textContent = z3;
+                const cell4 = document.createElement("td"); cell4.textContent = z4;
 
-                newRow.appendChild(cell1); newRow.appendChild(cell2); newRow.appendChild(cell3);
+                newRow.appendChild(cellTime);
+                newRow.appendChild(cell1);
+                newRow.appendChild(cell2);
+                newRow.appendChild(cell3);
+                newRow.appendChild(cell4);
+                
                 tableBody.insertBefore(newRow, tableBody.firstChild);
             }
         }
 
         function onScanFailure(error) {}
 
+        // TEXT-EXPORT: REINE SPALTENTRENNUNG PER TABULATOR
         function exportToTXT() {
             if (scannedItems.length === 0) { alert("Die Liste ist leer!"); return; }
             
-            let textContent = "GESCANNTE GERÄTE - VERKAUFSLISTE\n";
-            textContent += "Erstellt am: " + new Date().toLocaleDateString('de-DE') + "\n";
-            textContent += "==================================================\n\n";
-            textContent += "Uhrzeit   | Interne Nummer  | Seriennummer\n";
-            textContent += "--------------------------------------------------\n";
+            // Header mit Tabulator-Abständen (\t sorgt für eine neue Spalte im Textdokument)
+            let textContent = "Zeit\tZeile 1\tZeile 2\tZeile 3\tZeile 4\n";
             
             scannedItems.forEach(function(item) { 
-                textContent += item.timestamp + "  | " + item.intNum + "        | " + item.serNum + "\n"; 
+                textContent += item.timestamp + "\t" + item.z1 + "\t" + item.z2 + "\t" + item.z3 + "\t" + item.z4 + "\n"; 
             });
             
             const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = "Verkaufsliste_" + new Date().toISOString().slice(0,10) + ".txt";
+            link.download = "Verkaufsliste_Spalten_" + new Date().toISOString().slice(0,10) + ".txt";
             document.body.appendChild(link); 
             link.click(); 
             document.body.removeChild(link);
