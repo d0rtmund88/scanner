@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mehrzeilen Verkaufsscanner</title>
+    <title>Verkaufsscanner</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
         body { font-family: sans-serif; margin: 0; padding: 10px; background-color: #f5f7fa; color: #333; }
@@ -15,7 +15,7 @@
         .scanner-wrapper {
             position: relative;
             width: 100%;
-            max-height: 280px;
+            height: 300px;
             border-radius: 8px;
             overflow: hidden;
             margin-bottom: 10px;
@@ -23,13 +23,15 @@
         }
         #reader { 
             width: 100%; 
-            max-height: 280px; 
+            height: 100%; 
         }
         #reader video {
-            max-height: 280px !important; 
+            width: 100% !important;
+            height: 100% !important;
             object-fit: cover; 
         }
 
+        /* Schlichtes, dezentes Overlay ohne einengende Box */
         .scan-overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -37,25 +39,14 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: inset 0 0 0 200px rgba(0, 0, 0, 0.4);
         }
-        .scan-box {
-            width: 160px;  
-            height: 160px;
-            position: relative;
-            box-sizing: border-box;
+        .scan-line {
+            width: 80%;
+            height: 2px;
+            background-color: #2ecc71;
+            opacity: 0.7;
+            box-shadow: 0 0 8px #2ecc71;
         }
-        .scan-box::before, .scan-box::after, .scan-box span::before, .scan-box span::after {
-            content: "";
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            border: 4px solid #2ecc71; 
-        }
-        .scan-box::before { top: 0; left: 0; border-right: none; border-bottom: none; }
-        .scan-box::after { top: 0; right: 0; border-left: none; border-bottom: none; }
-        .scan-box span::before { bottom: 0; left: 0; border-right: none; border-top: none; }
-        .scan-box span::after { bottom: 0; right: 0; border-left: none; border-top: none; }
 
         button { color: white; border: none; padding: 10px 15px; font-size: 15px; font-weight: bold; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; }
         .start-btn { background-color: #3182ce; }
@@ -86,7 +77,7 @@
         <div class="scanner-wrapper">
             <div id="reader"></div>
             <div class="scan-overlay" id="overlay" style="display:none;">
-                <div class="scan-box"><span></span></div>
+                <div class="scan-line"></div>
             </div>
         </div>
 
@@ -136,12 +127,16 @@
 
         function startScanning() {
             const cameraId = document.getElementById('cameraSelect').value;
+            
+            // HIER WURDE DIE FIXATION AUF EINE BOX ENTFERNT & AUFLÖSUNG ERHÖHT
             html5QrCode.start(
                 cameraId, 
                 {
-                    fps: 15, 
-                    qrbox: { width: 160, height: 160 },
-                    formatsToSupport: [ Html5QrcodeSupportedFormats.DATA_MATRIX, Html5QrcodeSupportedFormats.QR_CODE ]
+                    fps: 20, 
+                    // KEINE qrbox mehr! Der Scanner liest jetzt das gesamte Bild, was ideal für kleine Codes ist.
+                    experimentalFeatures: {
+                        useBarCodeDetectorIfSupported: true
+                    }
                 },
                 onScanSuccess,
                 onScanFailure
@@ -162,28 +157,24 @@
             }
         }
 
-        // DIESE LOGIK TRENNT DEN INHALT PER ZEILENUMBRIUCH IN 4 SEPARATE WERTE
         function onScanSuccess(decodedText, decodedResult) {
-            // GS1/Logistik-Steuerzeichen durch reguläre Zeilenumbrüche ersetzen, falls vorhanden
+            // GS1/Logistik-Steuerzeichen durch reguläre Zeilenumbrüche ersetzen
             let normalizedText = decodedText.replace(/[\x1D\x1E\x09]/g, '\n');
             
             // Text in Zeilen aufteilen
             let lines = normalizedText.split(/\r?\n/);
-            
-            // Leere Zeilen ausfiltern und Trimmen
             lines = lines.map(line => line.trim()).filter(line => line.length > 0);
 
-            // Wenn gar kein Text da ist, abbrechen
             if (lines.length === 0) return;
 
-            // Fülle exakt 4 Zeilen auf (falls ein Code mal weniger Zeilen hat)
+            // Flexibel bis zu 4 Zeilen befüllen
             let z1 = lines[0] || "-";
             let z2 = lines[1] || "-";
             let z3 = lines[2] || "-";
             let z4 = lines[3] || "-";
 
-            // Einzigartiger Schlüssel zur Vermeidung von Doppel-Scans (Kombination aus Zeile 1 und 2)
-            const uniqueKey = z1 + "_" + z2;
+            // Erstelle einen eindeutigen Schlüssel aus allen verfügbaren Zeilen gegen Doppelscans
+            const uniqueKey = lines.join("_");
             const existiertBereits = scannedItems.some(function(item) { return item.key === uniqueKey; });
 
             if (!existiertBereits) {
@@ -225,11 +216,10 @@
 
         function onScanFailure(error) {}
 
-        // TEXT-EXPORT: REINE SPALTENTRENNUNG PER TABULATOR
         function exportToTXT() {
             if (scannedItems.length === 0) { alert("Die Liste ist leer!"); return; }
             
-            // Header mit Tabulator-Abständen (\t sorgt für eine neue Spalte im Textdokument)
+            // Tabulator-getrennter Spalten-Header
             let textContent = "Zeit\tZeile 1\tZeile 2\tZeile 3\tZeile 4\n";
             
             scannedItems.forEach(function(item) { 
