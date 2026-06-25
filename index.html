@@ -55,11 +55,11 @@
             box-sizing: border-box;
         }
         
-        /* KAMERA-STREAM DESIGN MIT ZUSÄTZLICHER SKALIERUNGS-OPTION FÜR ZOOM */
+        /* KAMERA-STREAM DESIGN */
         .scanner-wrapper {
             position: relative;
             width: 100%;
-            height: 280px;
+            height: 300px;
             border-radius: 12px;
             overflow: hidden;
             margin-bottom: 15px;
@@ -71,14 +71,10 @@
             width: 100%; 
             height: 100%; 
         }
-        
-        /* DIE SOFTWARE-LUPE: Zoomt das Videosignal künstlich um das 2.5-fache heran */
         #reader video {
             width: 100% !important;
             height: 100% !important;
             object-fit: cover; 
-            transform: scale(2.5); /* 2.5x digitaler Zoom */
-            transform-origin: center center;
         }
 
         /* Scan-Linie im modernen Grün */
@@ -89,6 +85,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            z-index: 10;
         }
         .scan-line {
             width: 85%;
@@ -240,14 +237,14 @@
         function startScanning() {
             const cameraId = document.getElementById('cameraSelect').value;
             
-            // HIER ERZWINGEN WIR PER CONSTRAINT DIE HÖCHSTMÖGLICHE AUFLÖSUNG (4K / FULL-HD)
+            // Reiner Engine-Start ohne künstliche CSS-Einschränkungen für maximale Performance
             html5QrCode.start(
                 { deviceId: cameraId }, 
                 {
-                    fps: 25, 
+                    fps: 30, // Höhere Framerate für schnellere Erfassung
                     videoConstraints: {
-                        width: { ideal: 3840 },
-                        height: { ideal: 2160 },
+                        width: { ideal: 4096, min: 1920 },
+                        height: { ideal: 2160, min: 1080 },
                         facingMode: "environment"
                     },
                     experimentalFeatures: {
@@ -260,6 +257,26 @@
                 document.getElementById('cameraSelectContainer').style.display = 'none';
                 document.getElementById('stopBtn').style.display = 'block';
                 document.getElementById('overlay').style.display = 'flex';
+                
+                // VERSUCH, DEN HARDWARE-ZOOM DER KAMERA ZU AKTIVIEREN (Falls vom Smartphone im Browser unterstützt)
+                setTimeout(() => {
+                    try {
+                        const videoTrack = html5QrCode.getRunningTrack();
+                        if (videoTrack && typeof videoTrack.getCapabilities === 'function') {
+                            const capabilities = videoTrack.getCapabilities();
+                            if (capabilities.zoom) {
+                                // Setze den Zoom auf das 2- oder 3-fache des Minimums, um kleine Codes heranzuholen
+                                const targetZoom = Math.min(capabilities.zoom.max, capabilities.zoom.min * 2.5);
+                                videoTrack.applyConstraints({
+                                    advanced: [{ zoom: targetZoom }]
+                                });
+                            }
+                        }
+                    } catch (zoomErr) {
+                        console.log("Hardware-Zoom im Browser nicht unterstützt:", zoomErr);
+                    }
+                }, 1000);
+
             }).catch(err => { alert("Kamera-Start fehlgeschlagen: " + err); });
         }
 
@@ -273,25 +290,38 @@
             }
         }
 
+        // INTELLIGENTE DATENVERARBEITUNG FÜR INDUSTRIE-CODES
         function onScanSuccess(decodedText, decodedResult) {
-            let cleanText = decodedText.replace(/[\x00-\x1F\x7F-\x9F\x1D\x1E\x09]/g, ' ');
-            let parts = cleanText.split(/\s+/);
-            parts = parts.map(p => p.trim()).filter(p => p.length > 0);
+            if (!decodedText) return;
+
+            // Ersetzt alle bekannten Steuerzeichen und Whitespaces durch Zeilenumbrüche zur Standardisierung
+            let normalized = decodedText.replace(/[\x00-\x1F\x7F-\x9F\x1D\x1E\x09]/g, '\n');
+            
+            // In einzelne Zeilen/Blöcke splitten
+            let rawParts = normalized.split(/\s+/);
+            
+            // Säubern und leere Elemente entfernen
+            let parts = rawParts.map(p => p.trim()).filter(p => p.length > 0);
 
             if (parts.length === 0) return;
 
-            let z1 = parts[0] || "-";
-            let z2 = parts[1] || "-";
-            let z3 = parts[2] || "-";
-            let z4 = parts[3] || "-";
-
-            if (z1.toUpperCase() === "NICLEN" && parts.length > 1) {
-                z1 = parts[1] || "-";
-                z2 = parts[2] || "-";
-                z3 = parts[3] || "-";
-                z4 = parts[4] || "-";
+            // Spezial-Filter für den Fall aus deiner Kamera-App: Duplikate direkt hintereinander ausfiltern
+            let uniqueParts = [];
+            for (let i = 0; i < parts.length; i++) {
+                if (parts[i].toUpperCase() !== "NICLEN" && parts[i] !== uniqueParts[uniqueParts.length - 1]) {
+                    uniqueParts.push(parts[i]);
+                }
             }
 
+            if (uniqueParts.length === 0) return;
+
+            // Spalten sauber zuordnen
+            let z1 = uniqueParts[0] || "-";
+            let z2 = uniqueParts[1] || "-";
+            let z3 = uniqueParts[2] || "-";
+            let z4 = uniqueParts[3] || "-";
+
+            // Falls es sich um die Codes aus dem Screenshot handelt, haben wir oft 2 Hauptwerte
             const uniqueKey = z1 + "_" + z2 + "_" + z3;
             const existiertBereits = scannedItems.some(function(item) { return item.key === uniqueKey; });
 
