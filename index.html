@@ -55,7 +55,7 @@
             box-sizing: border-box;
         }
         
-        /* KAMERA-STREAM DESIGN */
+        /* KAMERA-STREAM DESIGN MIT ZUSÄTZLICHER SKALIERUNGS-OPTION FÜR ZOOM */
         .scanner-wrapper {
             position: relative;
             width: 100%;
@@ -71,10 +71,14 @@
             width: 100%; 
             height: 100%; 
         }
+        
+        /* DIE SOFTWARE-LUPE: Zoomt das Videosignal künstlich um das 2.5-fache heran */
         #reader video {
             width: 100% !important;
             height: 100% !important;
             object-fit: cover; 
+            transform: scale(2.5); /* 2.5x digitaler Zoom */
+            transform-origin: center center;
         }
 
         /* Scan-Linie im modernen Grün */
@@ -236,10 +240,16 @@
         function startScanning() {
             const cameraId = document.getElementById('cameraSelect').value;
             
+            // HIER ERZWINGEN WIR PER CONSTRAINT DIE HÖCHSTMÖGLICHE AUFLÖSUNG (4K / FULL-HD)
             html5QrCode.start(
-                cameraId, 
+                { deviceId: cameraId }, 
                 {
-                    fps: 20, 
+                    fps: 25, 
+                    videoConstraints: {
+                        width: { ideal: 3840 },
+                        height: { ideal: 2160 },
+                        facingMode: "environment"
+                    },
                     experimentalFeatures: {
                         useBarCodeDetectorIfSupported: true
                     }
@@ -248,7 +258,6 @@
                 onScanFailure
             ).then(() => {
                 document.getElementById('cameraSelectContainer').style.display = 'none';
-                document.getElementById('stopBtn').style.block = 'block';
                 document.getElementById('stopBtn').style.display = 'block';
                 document.getElementById('overlay').style.display = 'flex';
             }).catch(err => { alert("Kamera-Start fehlgeschlagen: " + err); });
@@ -264,27 +273,18 @@
             }
         }
 
-        // UPGRADETE ERKENNUNGSLOGIK FÜR SYSTEM-TRENNZEICHEN UND LEERZEICHEN
         function onScanSuccess(decodedText, decodedResult) {
-            // Ersetzt alle denkbaren Logistik-Steuerzeichen (GS1, EOT, RS, TAB) durch ein normales Leerzeichen
             let cleanText = decodedText.replace(/[\x00-\x1F\x7F-\x9F\x1D\x1E\x09]/g, ' ');
-            
-            // Teilt den Inhalt nun flexibel an jedem Leerzeichen auf (egal ob 1 oder mehrere hintereinander)
             let parts = cleanText.split(/\s+/);
-            
-            // Filtert leere Fragmente heraus und trimmt den Text
             parts = parts.map(p => p.trim()).filter(p => p.length > 0);
 
             if (parts.length === 0) return;
 
-            // Ordne die gefundenen Textblöcke den Spalten zu
             let z1 = parts[0] || "-";
             let z2 = parts[1] || "-";
             let z3 = parts[2] || "-";
             let z4 = parts[3] || "-";
 
-            // Falls der Firmenname "NICLEN" als erstes erkannt wird, rücken wir die Spalten
-            // optional auf, damit die eigentlichen Gerätenummern vorne stehen.
             if (z1.toUpperCase() === "NICLEN" && parts.length > 1) {
                 z1 = parts[1] || "-";
                 z2 = parts[2] || "-";
